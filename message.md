@@ -365,6 +365,11 @@ Kafka是分布式的发布—订阅消息系统。它最初由LinkedIn(领英)�
    基于分布式的扩展和容错机制；Kafka的数据都会复制到几台服务器上。当某一台故障失效时，生产者和消费者转而使用其它的机器。
 
 
+Kafka 基于 log 这种抽象数据模型，log 是一种只能追加且按照时间完全有序的记录序列。
+
+
+
+
 ### 基本组成
 
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_1.png)
@@ -376,17 +381,31 @@ Kafka是分布式的发布—订阅消息系统。它最初由LinkedIn(领英)�
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_3.png)
 
 Broker 是 Kafka 实例，每个服务器上有一个或多个 Kafka 的实例
-可以简单地认为一台 kafka 服务器就是一个 broker，一个 Kafka 集群由多个 Broker 组成。
+可以简单地认为一台 Kafka 服务器就是一个 broker，一个 Kafka 集群由多个 Broker 组成。
 每个 Kafka 集群内的 Broker 都有一个不重复的编号，Broker-0、Broker-1 等…… 
+
+
+Broker 接收来自生产者的消息，为消息设置偏移量，并提交消息到磁盘保存。
+Broker 为消费者提供服务，对读取分区的请求做出响应，返回已经提交到磁盘的消息。
+Broker 是集群 (Cluster) 的组成部分。每一个集群都会选举出一个 Broker 作为集群控制器 (Controller)，集群控制器负责管理工作，包括将分区分配给 Broker 和监控 Broker。
+在集群中，一个分区 (Partition) 从属一个 Broker，该 Broker 被称为分区的首领 (Leader)。一个分区可以分配给多个 Brokers，这个时候会发生分区复制。这种复制机制为分区提供了消息冗余，如果有一个 Broker 失效，其他 Broker 可以接管领导权。
+
+
+![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_8.png)
+
+
+
+
+
 
 
 
 
 #### Topic与Partition
 
-- Topic：消息的主题，可以理解为消息的分类，Kafka 的数据就保存在 Topic。在每个 Broker 上都可以创建多个 Topic。
+- Topic：消息的主题，可以理解为消息的分类，Kafka 的数据就保存在 Topic。在每个 Broker 上都可以创建多个 Topic；为了实现扩展性，一个非常大的 Topic 也可以分布到多个 Broker上。
 
-- Partition：Topic的分区，每个 Topic 可以有多个 Partition，每个 partition 又由一个一个消息组成。
+- Partition：Topic 的分区，每个 Topic 可以有多个 Partition，每个 partition 又由一个一个消息组成。
         同一个 Topic 在不同的 Partition 的数据是不重复的，Partition 的表现形式就是一个一个的文件夹！
         Partition 的作用是做负载均衡，提高 Kafka 的吞吐量。
 
@@ -397,22 +416,89 @@ Broker 是 Kafka 实例，每个服务器上有一个或多个 Kafka 的实例
 
 
 
-
-
+Partition 中的每条消息都被标记了一个 sequential id ,也就是 offset，并按顺序存储在 partition 中。
 这样，消息就以一个个id的方式，组织起来。
+每个 Partition 在 Kafka 存储层面是 append log。任何发布到此 Partition 的消息都会被追加到 log 文件的尾部
 
-- producer 选择一个 topic，生产消息，消息会通过分配策略 append 到某个 partition 末尾。
-- consumer 选择一个 topic，通过 id 指定从哪个位置开始消费消息。消费完成之后保留 id，下次可以从这个位置开始继续消费，也可以从其他任意位置开始消费。
+日志是一种存储抽象，只能追加按照时间完全有序的记录序列，是一种有持久性保证和强有序的语义消息系统。日志是分布式一致性的底层实现基石。
 
 
 
-每个消息都被标识了一个递增序列号代表其进来的先后顺序，并按顺序存储在 partition 中。
-
-并且 Partition 中的每条消息都被标记了一个 sequential id ,也就是 offset，并且存储的数据是可配置存储时间的。
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_5.png)
 
 
-kafka为每个主题维护了分布式的分区(partition)日志文件，每个partition在kafka存储层面是append log。任何发布到此partition的消息都会被追加到log文件的尾部，在分区中的每条消息都会按照时间顺序分配到一个单调递增的顺序编号，也就是我们的offset,offset是一个long型的数字，我们通过这个offset可以确定一条在该partition下的唯一消息。在partition下面是保证了有序性，但是在topic下面没有保证有序性。
+
+kafka的存储文件都是按照offset.kafka来命名，用offset做名字的好处是方便查找。
+例如你想找位于2049的位置，只要找到2048.kafka的文件即可。当然the first offset就是00000000000.kafka
+
+
+
+
+
+每个 Partition 的文件夹下面会有多组 Segment 文件。
+
+每组 Segment 文件又包含 .index 文件、.log 文件、.timeindex 文件（早期版本中没有）三个文件。
+
+Log 文件就是实际存储 Message 的地方，而 Index 和 Timeindex 文件为索引文件，用于检索消息。
+
+
+
+每个分区都是有序且顺序不可变的记录集，并且不断地追加到结构化的commit log文件。分区中的每一个记录都会分配一个id号来表示顺序，我们称之为offset，offset用来唯一的标识分区中每一条记录。
+
+Kafka 集群保留所有发布的记录—无论他们是否已被消费—并通过一个可配置的参数——保留期限来控制. 举个例子， 如果保留策略设置为2天，一条记录发布后两天内，可以随时被消费，两天过后这条记录会被抛弃并释放磁盘空间。Kafka的性能和数据大小无关，所以长时间存储数据没有什么问题.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+那存储在 Log 中的 Message 是什么样子的呢？消息主要包含消息体、消息大小、Offset、压缩类型……等等！
+
+我们重点需要知道的是下面三个：
+
+Offset：Offset 是一个占 8byte 的有序 id 号，它可以唯一确定每条消息在 Parition 内的位置！
+消息大小：消息大小占用 4byte，用于描述消息的大小。
+消息体：消息体存放的是实际的消息数据（被压缩过），占用的空间根据具体的消息而不一样。
+③存储策略
+
+无论消息是否被消费，Kafka 都会保存所有的消息。那对于旧数据有什么删除策略呢？
+
+基于时间，默认配置是 168 小时（7 天）。
+基于大小，默认配置是 1073741824。
+需要注意的是，Kafka 读取特定消息的时间复杂度是 O(1)，所以这里删除过期的文件并不会提高 Kafka 的性能！
+
+
+消费者把每个分区最后读取的偏移量保存在 Zookeeper 或 Kafka 上，如果消费者关闭或者重启，它还可以重新获取该偏移量，以保证读取状态不会丢失。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+producer 选择一个 topic，生产消息，消息会通过分配策略 append 到某个 partition 末尾。
+consumer 选择一个 topic，通过 id 指定从哪个位置开始消费消息。消费完成之后保留 id，下次可以从这个位置开始继续消费，也可以从其他任意位置开始消费。
+
+
+
+并且存储的数据是可配置存储时间的。
+
 
 
 
@@ -480,14 +566,76 @@ Replication：每一个分区都有多个副本，副本的作用是做备胎。
 
 
 
-#### producer
+#### Producer
 
-producer生产消息需要如下参数：
-- topic：往哪个 topic 生产消息。
-- partition：往哪个 partition 生产消息。
-- key：根据该 key 将消息分区到不同 partition。
-- message：消息。
+Producer生产消息需要如下参数：
+- Topic：往哪个 Topic 生产消息
+- Partition：往哪个 Partition 生产消息
+- key：根据该 key 将消息分区到不同 Partition
+- message：消息数据
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_6.png)
+
+
+如果没有Key值则进行轮询发送。
+
+如果有Key值，对Key值进行Hash，然后对分区数量取余，保证了同一个Key值的会被路由到同一个分区，如果想队列的强顺序一致性，可以让所有的消息都设置为同一个Key。
+
+
+消息发送到哪个分区上，有两种基本的策略，一是采用Key Hash算法，一是采用Round Robin算法
+
+Partition 在写入的时候可以指定需要写入的 Partition，如果有指定，则写入对应的 Partition。
+如果没有指定 Partition，但是设置了数据的 Key，则会根据 Key 的值 Hash 出一个 Partition。
+如果既没指定 Partition，又没有设置 Key，则会轮询选出一个 Partition。
+
+
+Producer 在向 Kafka 写入消息的时候，怎么保证消息不丢失呢？
+
+就是通过 ACK 应答机制！在生产者向队列写入数据的时候可以设置参数来确定是否确认 Kafka 接收到数据，这个参数可设置的值为 0、1、all：
+
+0 代表 Producer 往集群发送数据不需要等到集群的返回，不确保消息发送成功。安全性最低但是效率最高。
+1 代表 Producer 往集群发送数据只要 Leader 应答就可以发送下一条，只确保 Leader 发送成功。
+all 代表 Producer 往集群发送数据需要所有的 Follower 都完成从 Leader 的同步才会发送下一条，确保 Leader 发送成功和所有的副本都完成备份。安全性最高，但是效率最低。
+最后要注意的是，如果往不存在的 Topic 写数据，能不能写入成功呢？Kafka 会自动创建 Topic，分区和副本的数量根据默认配置都是 1。
+
+
+
+
+
+
+#### Consumer
+之前我们知道传统的消息队列有两种模式：点对点模式（队列）、发布订阅模式
+
+Kafka 通过 consumer group 将两种模式统一处理：
+系统将 consumer group 按名称分组，**将消息复制并分发给所有分组，每个分组只有一个 consumer 能消费这条消息**。如下图：
+
+![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_7.png)
+
+
+两个极端情况：
+当所有consumer的consumer group相同时，系统变成点对点模式
+当每个consumer的consumer group都不相同时，系统变成发布订阅
+
+
+
+1）任意消费组内，每个partition有且仅有一个consumer，因此kafka保证每个partition的消息处理是无锁且有序的，因此kafka才有大吞吐量
+
+2）任一partition会被每个消费组消费，因此当需要对同一份message处理两种逻辑，可以分为两个消费组
+
+3）GroupId是topic下的一个子概念，不同topic的groupId没有任何关系，即使他们的值相同
+
+
+注意
+1、Consumer Groups 提供了topics和partitions的隔离， 如上图Consumer Group A中的consumer-C2挂掉，consumer-C1会接收P1,P2，即一个consumer Group中有其他consumer挂掉后能够重新平衡。如下图：
+
+
+
+
+
+一般消息系统，consumer存在两种消费模型：
+
+ push：优势在于消息实时性高。劣势在于没有考虑consumer消费能力和饱和情况，容易导致producer压垮consumer。
+ pull：优势在可以控制消费速度和消费数量，保证consumer不会出现饱和。劣势在于当没有数据，会出现空轮询，消耗cpu。
+kafka采用pull，并采用可配置化参数保证当存在数据并且数据量达到一定量的时候，consumer端才进行pull操作，否则一直处于block状态。kakfa采用整数值consumer position来记录单个分区的消费状态，并且单个分区单个消息只能被consumer group内的一个consumer消费，维护简单开销小。消费完成，broker收到确认，position指向下次消费的offset。由于消息不会删除，在完成消费，position更新之后，consumer依然可以重置offset重新消费历史消息。
 
 
 
