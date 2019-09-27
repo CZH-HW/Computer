@@ -1,40 +1,57 @@
 [TOC]
 
-# Kafka 基本框架
-Kafka是分布式的流处理平台。它最初由LinkedIn(领英)公司发布，使用Scala语言编写，与2010年12月份开源，成为Apache的顶级项目。Kafka是一个高吞吐量的、持久性的、分布式发布订阅消息系统。它主要用于处理活跃的数据(登录、浏览、点击、分享、喜欢等用户行为产生的数据)。
+### Kafka 简介
+Kafka是分布式的流处理平台。它最初由LinkedIn(领英)公司发布，使用Scala语言编写，与2010年12月份开源，成为Apache的顶级项目。Kafka是一个高吞吐量的、持久性的、分布式发布订阅消息系统。
+
 三大特点：
 1. 高吞吐量（生产消费）
    可以满足每秒百万级别消息的生产和消费。
+<br>
 2. 持久性（中间存储）
-   有一套完善的消息存储机制，确保数据的高效安全的持久化。
+   可进行持久化操作，将消息持久化到到磁盘，以日志的形式存储，因此可用于批量消费，例如ETL，以及实时应用程序。 
+   通过将数据持久化到硬盘以及 replication 防止数据丢失。
+<br>
 3. 分布式（整体健壮性）
-   基于分布式的扩展和容错机制，Kafka的数据都会复制到几台服务器上。当某一台故障失效时，生产者和消费者转而使用其它的机器。
+   基于分布式的扩展和容错机制，Kafka 的数据都会复制到几台服务器上。当某一台故障失效时，生产者和消费者转而使用其它的机器。
+<br>
 
-
+### Kafka 拓扑结构
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_1.png)
-![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_2.png)
 
-主要由Producer、Consumer、Broker、Topic、Partition、
+|名词|解释|
+|----|----|
+|Producer|消息的生成者|
+|Consumer|消息的消费者|
+|ConsumerGroup|消费者组，可以并行消费 Topic 中的 Partition 的消息|
+|Broker|缓存代理，Kafka 集群中的一台或多台服务器统称 Broker|
+|Topic|Kafka处理资源的消息源（feeds of messages）的不同分类|
+|Partition|Topic 物理上的分组，一个 Topic 可以分为多个 Partition，每个 Partition 是一个有序的队列。Partition 中每条消息都会被分配一个有序的 Id（offset）|
+|Message|消息，是通信的基本单位，每个 Producer 可以向一个 Topic（主题）发布一些消息|
+
+<br>
+
 
 ### Broker
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_3.png)
 
-Broker 是 Kafka 实例，每个服务器上有一个或多个 Kafka 的实例
-可以简单地认为一台 Kafka 服务器就是一个 broker，一个 Kafka 集群由多个 Broker 组成。
+可以简单地认为一台 Kafka 服务器就是一个 Broker，一个 Kafka 集群由多个 Broker 组成。
 每个 Kafka 集群内的 Broker 都有一个不重复的编号，Broker-0、Broker-1 等…… 
 
 
-Broker 接收来自生产者的消息，为消息设置偏移量，并提交消息到磁盘保存。
-Broker 为消费者提供服务，对读取分区的请求做出响应，返回已经提交到磁盘的消息。
-Broker 是集群 (Cluster) 的组成部分。每一个集群都会选举出一个 Broker 作为集群控制器 (Controller)，集群控制器负责管理工作，包括将分区分配给 Broker 和监控 Broker。
-在集群中，一个分区 (Partition) 从属一个 Broker，该 Broker 被称为分区的首领 (Leader)。一个分区可以分配给多个 Brokers，这个时候会发生分区复制。这种复制机制为分区提供了消息冗余，如果有一个 Broker 失效，其他 Broker 可以接管领导权。
+- Broker 接收来自生产者的消息，为消息设置偏移量，并提交消息到磁盘保存。
+<br>
+- Broker 为消费者提供服务，对读取分区的请求做出响应，返回已经提交到磁盘的消息。
+<br>
+- Broker 是集群 (Cluster) 的组成部分。每一个集群都会选举出一个 Broker 作为集群控制器 (Controller)，集群控制器负责管理工作，包括将分区分配给 Broker 和监控 Broker。
+<br>
+- 在集群中，一个 Partition 可以分配给多个 Brokers，这个时候会发生分区复制。这种复制机制为分区提供了消息冗余，如果有一个 Broker 失效，其他 Broker 可以接管领导权。
 
 
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_8.png)
 
 
 
-### Topic与Partition
+### Topic 与 Partition
 
 - Topic：消息的主题，可以理解为消息的分类。在每个 Broker 上都可以创建多个 Topic；
 为了实现扩展性，一个非常大的 Topic 也可以分布到多个 Broker 上。
@@ -46,7 +63,7 @@ Broker 是集群 (Cluster) 的组成部分。每一个集群都会选举出一�
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_4.png)
 
 
-#### Topic（逻辑层面）
+#### Topic
 
 如下图所示：
 创建 Topic1 和 Topic2 两个 Topic，分别有 13 个和 19 个 Partition 分区，则整个集群上会相应会生成共 13+19=32 个文件夹（Topic1 和 Topic2 replication-factor 均为 1），如下图所示。
@@ -57,7 +74,7 @@ Broker 是集群 (Cluster) 的组成部分。每一个集群都会选举出一�
 #### Partition offset
 Partition 中的每条消息都被标记了一个 sequential id，也就是 offset，并按顺序存储在 partition 中。
 
-offset的顺序性不跨Partition，由于一个 Topic 包含多个 Partition，因此无法在整个 Topic 范围内保证消息的顺序性，但可以保证消息在单个 Partition 内的顺序性。
+offset 的顺序性不跨 Partition，由于一个 Topic 包含多个 Partition，因此无法在整个 Topic 范围内保证消息的顺序性，但可以保证消息在单个 Partition 内的顺序性。
 
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_partition_2.png)
 
@@ -158,7 +175,7 @@ Segment 文件命名规则：
 
 #### Partition 备份机制
 
-- 每个 Partition 都有一台 server 作为 “leader”，零台或者多台 server 作为 follwers。
+- 每个 Partition 都有一台 server 作为 leader，零台或者多台 server 作为 follwers。
 <br>
 - leader server 处理一切对 partition （分区）的读写请求，而follwers只需被动的同步leader上的数据。当leader宕机了，followers 中的一台服务器会自动成为新的 leader。
 <br>
@@ -182,33 +199,20 @@ Segment 文件命名规则：
 2.确认分区后，Producer 要做的第二件事是寻找该分区对应的 leader，也就是该分区 leader 副本所在的Kafka broker。
 
 - 每个分区都由若干个副本组成，其中一个副本充当 leader 角色，只有 leader 能响应 clients 发送的请求，剩下的副本中有一部分副本会与 leader 副本保持同步，即所谓的 ISR(In-Sync Replicas, 副本同步队列)。
-
+<br>
 - 因此，在发送消息时，producer可以有多种选择来实现消息发送，例如不等待任何副本的响应便返回成功，或者只是等待leader副本响应写入操作后再返回成功。
 
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_producer_2.png)
 
 代码层面流程（Java）：
-producer首先使用一个线程(用户主线程，也就是用户启动producer的线程)将待发送的消息封装进一个ProducerRecord类实例，然后将其序列化之后发送给partitioner，再由后者确定了目标分区后一同发送到位于producer程序中的一块内存缓冲池中。而producer的另一个工作线程(I/O发送线程，也称Sender线程)则负责实时地从该缓冲区中提取准备就绪的消息封装进一个批次(batch),统一发送给对应的broker。
 
-Kafka producer发送消息的主方法是send方法，producer在底层完全实现了异步化发送，并且通过Java提供的Future同时实现了同步发送和异步发送+回调(Callback)(默认异步)两种发送方式。最后producer程序结束时需要关闭producer。
+1. Producer 首先使用一个线程（用户主线程，也就是用户启动 Producer 的线程）将待发送的消息封装进一个 ProducerRecord 类实例，然后将其序列化之后发送给 Partitioner，再由后者确定了目标分区后一同发送到位于 Producer 程序中的一块内存缓冲池 RecordAccmulator 中。
+<br>
+
+2. Producer 的另一个工作线程（I/O 发送线程，也称 Sender 线程）则负责实时地从该缓冲区中提取准备就绪的消息封装进一个批次（batch），统一发送给对应的 Broker。
+后台 Sender 线程被触发后从 RecordAccmulator 里面获取消息然后构建成 ClientRequest，将 ClientRequest 封装成 NetWorkClient 准备发送，NetWorkClient 将请求放入 KafkaChannel 准备发送，然后执行网络 IO，最后发送到 Kafka server。
 
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_producer_3.png)
-
-1、构建一个KafkaProducer对象，初始化一些用到的组件，比如缓存区，Sender线程等
-
-      2、如果配置了拦截器，可用对发送的消息进行可定制化的拦截或更改
-
-      3、对Key,value进行序列化
-
-      4、根据传入的参数，为消息选择合适的分区，具体怎么选，后面分析
-
-      5、将消息按照分区发送到RecordAccmulator暂存，消息按照每个分区进行汇总
-
-      6、后台Sender线程被触发后从RecordAccmulator里面获取消息然后构建成ClientRequest，怎么构建后面分析
-
-      7、将ClientRequest封装成NetWorkClient准备发送
-
-      8、NetWorkClient将请求放入KafkaChannel准备发送，然后执行网络IO，最后发送到kafka server
 
 
 #### Producer 如何保证消息的完整性 ？
@@ -233,21 +237,9 @@ Kafka 会自动创建 Topic，分区和副本的数量根据默认配置都是`1
 
 Kafka 通过 consumer group 将两种模式统一处理：
 
-consumer group是kafka提供的可扩展且具有容错性的消费者机制。既然是一个组，那么组内必然可以有多个消费者或消费者实例(consumer instance)，它们共享一个公共的ID，即group ID。组内的所有消费者协调在一起来消费订阅主题(subscribed topics)的所有分区(partition)
-
-系统将 consumer group 按名称分组，**将消息复制并分发给订阅了的分组，每个分组只有一个 consumer 能消费这条消息**。如下图：
+consumer group 是 kafka 提供的可扩展且具有容错性的消费者机制。既然是一个组，那么组内必然可以有多个消费者或消费者实例(consumer instance)，它们共享一个公共的 ID，即 group ID。组内的所有消费者协调在一起来消费订阅主题(subscribed topics)的所有分区(partition)，当然，**每个分区只能由同一个消费组内的一个consumer来消费**。
 
 ![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_7.png)
-
-
-1）任意消费组内，每个partition有且仅有一个consumer，因此kafka保证每个partition的消息处理是无锁且有序的，因此kafka才有大吞吐量
-
-2）任一partition会被每个消费组消费，因此当需要对同一份message处理两种逻辑，可以分为两个消费组
-
-3）GroupId是topic下的一个子概念，不同topic的groupId没有任何关系，即使他们的值相同
-
-
-
 
 
 两个极端情况：
@@ -255,19 +247,31 @@ consumer group是kafka提供的可扩展且具有容错性的消费者机制。�
 当每个consumer的consumer group都不相同时，系统变成发布订阅
 
 
-注意
-1、Consumer Groups 提供了topics和partitions的隔离， 如上图Consumer Group A中的consumer-C2挂掉，consumer-C1会接收P1,P2，即一个consumer Group中有其他consumer挂掉后能够重新平衡。如下图：
+
+#### 消费者位置（consumer position)
+
+消费者在消费的过程中需要记录自己消费了多少数据，即消费位置信息。
+
+很多消息引擎都把这部分信息保存在服务器端(Broker端)。这样做的好处当然是实现简单，但会有三个主要的问题：
+1. Broker从此变成有状态的，会影响伸缩性；
+2. 需要引入应答机制（acknowledgement）来确认消费成功。
+3. 由于要保存很多 Consumer 的 offset 信息，必然引入复杂的数据结构，造成资源浪费。
+
+而Kafka选择了不同的方式：每个 consumer group 保存自己的位移信息，那么只需要简单的一个整数表示位置就够了；同时可以引入 checkpoint 机制定期持久化，简化了应答机制的实现。
+
+
+Kafka 默认是定期帮你自动提交位移的`enable.auto.commit = true`，你当然可以选择手动提交位移实现自己控制。
+另外 kafka 会定期把 group 消费情况保存起来，做成一个 offset map，如下图所示：
+<br>
+
+![](https://github.com/CZH-HW/CloudImg/raw/master/Comp/kafka_consumer_1.png)
+
+上图中表明了test-group这个组当前的消费情况。
 
 
 
 
 
-
-一般消息系统，consumer存在两种消费模型：
-
- push：优势在于消息实时性高。劣势在于没有考虑consumer消费能力和饱和情况，容易导致producer压垮consumer。
- pull：优势在可以控制消费速度和消费数量，保证consumer不会出现饱和。劣势在于当没有数据，会出现空轮询，消耗cpu。
-kafka采用pull，并采用可配置化参数保证当存在数据并且数据量达到一定量的时候，consumer端才进行pull操作，否则一直处于block状态。kakfa采用整数值consumer position来记录单个分区的消费状态，并且单个分区单个消息只能被consumer group内的一个consumer消费，维护简单开销小。消费完成，broker收到确认，position指向下次消费的offset。由于消息不会删除，在完成消费，position更新之后，consumer依然可以重置offset重新消费历史消息。
 
 
 
